@@ -8,10 +8,19 @@ function isJsObject(x) {
 /* ============= Cooperative concurrency ==============
  * https://developer.mozilla.org/docs/Web/API/Background_Tasks_API */
 
-FIBER_NODE_DOM_KEY = "dom";
-FIBER_NODE_PARENT_KEY = "parent";
-FIBER_NODE_CHILD_KEY = "child";
-FIBER_NODE_SIBLING_KEY = "sibling";
+const FIBER_NODE_DOM_KEY = "dom";
+const FIBER_NODE_PARENT_KEY = "parent";
+const FIBER_NODE_CHILD_KEY = "child";
+const FIBER_NODE_SIBLING_KEY = "sibling";
+const FIBER_NODE_ALTERNATE_KEY = "alternate";
+const FIBER_EFFECT_TAG_KEY = "effectTag";
+
+/* Effect tag for updated props. */
+const EFFECT_TAG_UPDATE = "UPDATE";
+/* Effect tag for added node. */
+const EFFECT_TAG_PLACEMENT = "PLACEMENT";
+/* Effect tag for deleted node. */
+const EFFECT_TAG_DELETION = "DELETION";
 
 /* Performs the given 'unitOfWork' and returns the next.
  * Units of work are fiber nodes. Performing a unit of work
@@ -29,25 +38,7 @@ function performUnitOfWork(unitOfWork) {
   }
 
   const elements = unitOfWork[REACT_ELEMENT_PROPS_KEY][REACT_CHILDREN_PROP_KEY];
-  let prevSibling = null;
-  for (let i = 0; i < elements.length; i++) {
-    const element = elements[i];
-
-    const newFiber = {
-      [REACT_ELEMENT_TYPE_KEY]: element[REACT_ELEMENT_TYPE_KEY],
-      [REACT_ELEMENT_PROPS_KEY]: element[REACT_ELEMENT_PROPS_KEY],
-      [FIBER_NODE_PARENT_KEY]: unitOfWork,
-      [FIBER_NODE_DOM_KEY]: null,
-    };
-
-    if (i === 0) {
-      unitOfWork[FIBER_NODE_CHILD_KEY] = newFiber;
-    } else {
-      prevSibling[FIBER_NODE_SIBLING_KEY] = newFiber;
-    }
-
-    prevSibling = newFiber;
-  }
+  reconcileChildren(unitOfWork, elements);
 
   if (unitOfWork[FIBER_NODE_CHILD_KEY] != null) {
     return unitOfWork[FIBER_NODE_CHILD_KEY];
@@ -59,6 +50,62 @@ function performUnitOfWork(unitOfWork) {
       return nextFiber[FIBER_NODE_SIBLING_KEY];
     }
     nextFiber = nextFiber[FIBER_NODE_PARENT_KEY];
+  }
+}
+
+function reconcileChildren(fiber, elements) {
+  let prevSibling = null;
+  let alt = fiber[FIBER_NODE_ALTERNATE_KEY];
+  let oldFiber = alt == null ? null : alt[FIBER_NODE_CHILD_KEY];
+  let i = 0;
+  while (i < elements.length || oldFiber != null) {
+    const element = elements[i];
+    let newFiber = null;
+
+    const sameType =
+      oldFiber != null &&
+      element != null &&
+      element[REACT_ELEMENT_TYPE_KEY] == oldFiber[REACT_ELEMENT_TYPE_KEY];
+
+    if (sameType) {
+      /* Same type, so just update props. */
+      newFiber = {
+        [REACT_ELEMENT_TYPE_KEY]: element[REACT_ELEMENT_TYPE_KEY],
+        [REACT_ELEMENT_PROPS_KEY]: element[REACT_ELEMENT_PROPS_KEY],
+        [FIBER_NODE_DOM_KEY]: oldFiber[FIBER_NODE_DOM_KEY],
+        [FIBER_NODE_PARENT_KEY]: fiber,
+        [FIBER_NODE_ALTERNATE_KEY]: oldFiber,
+        [FIBER_EFFECT_TAG_KEY]: EFFECT_TAG_UPDATE,
+      };
+    } else {
+      /* New element. */
+      if (element != null) {
+        newFiber = {
+          [REACT_ELEMENT_TYPE_KEY]: element[REACT_ELEMENT_TYPE_KEY],
+          [REACT_ELEMENT_PROPS_KEY]: element[REACT_ELEMENT_PROPS_KEY],
+          [FIBER_NODE_DOM_KEY]: null,
+          [FIBER_NODE_PARENT_KEY]: fiber,
+          [FIBER_NODE_ALTERNATE_KEY]: null,
+          [FIBER_EFFECT_TAG_KEY]: EFFECT_TAG_PLACEMENT,
+        };
+      }
+
+      /* Deleted element. */
+      if (oldFiber != null) {
+        oldFiber[FIBER_EFFECT_TAG_KEY] = EFFECT_TAG_DELETION;
+        deletions.push(oldFiber);
+      }
+    }
+
+    if (i === 0) {
+      fiber[FIBER_NODE_CHILD_KEY] = newFiber;
+    } else {
+      prevSibling[FIBER_NODE_SIBLING_KEY] = newFiber;
+    }
+
+    prevSibling = newFiber;
+
+    i++;
   }
 }
 
@@ -86,10 +133,21 @@ function workLoop(deadline) {
 /* Key of children within React props object. */
 const REACT_CHILDREN_PROP_KEY = "children";
 
+/* Returns True iff the given prop 'key' is an event listener. */
+function isEvent(key) {
+  return key.startsWith("on");
+}
+
+/* Returns the lowercased event type represented by the given 'key'. */
+function getEventType(key) {
+  // Event listener keys start with "on", so we strip it out.
+  return key.toLowerCase().substring(2);
+}
+
 /* Returns True if the given 'key' is a property key,
- * False if it is the REACT_CHILDREN_PROP_KEY. */
+ * False if it is the REACT_CHILDREN_PROP_KEY or an event listener. */
 function isProperty(key) {
-  return key !== REACT_CHILDREN_PROP_KEY;
+  return key !== REACT_CHILDREN_PROP_KEY && !isEvent(key);
 }
 
 /* Key of props within React element object. */
@@ -205,9 +263,59 @@ function createDom(fiber) {
   return dom;
 }
 
+function isNew(prev, next) {
+  function isKeyNew(key) {
+    return prev[key] !== next[key];
+  }
+  return isKeyNew;
+}
+function isGone(next) {
+  function isKeyGone(key) {
+    return !(key in next);
+  }
+  return isKeyGone;
+}
+function updateDom(dom, prevProps, nextProps) {
+  /* Remove old or changed event listeners. */
+  Object.keys(prevProps)
+    .filter(isEvent)
+    .filter((key) => isGone(nextProps)(key) || isNew(prevProps, nextProps))
+    .forEach((key) => {
+      const eventType = getEventType(key);
+      dom.removeEventListener(eventType, prevProps[key]);
+    });
+
+  /* Remove old properties. */
+  Object.keys(prevProps)
+    .filter(isProperty)
+    .filter(isGone(nextProps))
+    .forEach((key) => {
+      delete dom[key];
+    });
+
+  /* Set new or changed properties. */
+  Object.keys(nextProps)
+    .filter(isProperty)
+    .filter(isNew(prevProps, nextProps))
+    .forEach((key) => {
+      dom[key] = nextProps[key];
+    });
+
+  /* Add new or changed event listeners. */
+  Object.keys(nextProps)
+    .filter(isEvent)
+    .filter(isNew(prevProps, nextProps))
+    .forEach((key) => {
+      const eventType = getEventType(key);
+      dom.addEventListener(eventType, nextProps[key]);
+    });
+}
+
 /* Commit the WIP root. */
 function commit() {
+  wipDeletions.forEach(commitNode);
   commitNode(wipRoot[FIBER_NODE_CHILD_KEY]);
+  currentRoot = wipRoot;
   wipRoot = null;
 }
 
@@ -218,7 +326,24 @@ function commitNode(fiber) {
     return;
   }
   const domParent = fiber[FIBER_NODE_PARENT_KEY][FIBER_NODE_DOM_KEY];
-  domParent.appendChild(fiber[FIBER_NODE_DOM_KEY]);
+
+  if (fiber[FIBER_EFFECT_TAG_KEY] === EFFECT_TAG_PLACEMENT) {
+    domParent.appendChild(fiber[FIBER_NODE_DOM_KEY]);
+  } else if (fiber[FIBER_EFFECT_TAG_KEY] === EFFECT_TAG_DELETION) {
+    domParent.removeChild(fiber[FIBER_NODE_DOM_KEY]);
+  } else if (
+    fiber[FIBER_EFFECT_TAG_KEY] === EFFECT_TAG_UPDATE &&
+    fiber[FIBER_NODE_DOM_KEY] != null
+  ) {
+    updateDom(
+      fiber[FIBER_NODE_DOM_KEY],
+      fiber[FIBER_NODE_ALTERNATE_KEY][REACT_ELEMENT_PROPS_KEY],
+      fiber[REACT_ELEMENT_PROPS_KEY],
+    );
+  } else {
+    console.error("Illegal effect tag", fiber[FIBER_EFFECT_TAG_KEY]);
+  }
+
   commitNode(fiber[FIBER_NODE_CHILD_KEY]);
   commitNode(fiber[FIBER_NODE_SIBLING_KEY]);
 }
@@ -229,6 +354,7 @@ function render(element, container) {
   nextUnitOfWork = wipRoot = {
     [FIBER_NODE_DOM_KEY]: container,
     [REACT_ELEMENT_PROPS_KEY]: { [REACT_CHILDREN_PROP_KEY]: [element] },
+    [FIBER_NODE_ALTERNATE_KEY]: currentRoot,
   };
 }
 
@@ -241,24 +367,32 @@ const React = {
 
 /* ================== React app ======================= */
 
+/* Global pointer to the fiber root of the DOM currently rendered. */
+let currentRoot = null;
+
 /* Work in progress root as fiber node.
  * To perform work in units but only mutate DOM
  * when work is entirely done. */
 let wipRoot = null;
+/* Work in progress elements to delete. */
+let wipDeletions = [];
 /* Global pointer to the next unit of work as fiber node. */
 let nextUnitOfWork = null;
 
 /* "Install" the work loop inside the event loop. */
 requestIdleCallback(workLoop);
 
-const container = document.getElementById("root");
+function Hello(props) {
+  return React.createElement("h1", null, "Hi, ", props.name);
+}
 
 const element = React.createElement(
   "div",
   { id: "foo" },
-  React.createElement("h1", { title: "foo" }, "Hello"),
+  // React.createElement(Hello, { name: "foo" }),
   React.createElement("a", { href: "https://danielfalbo.com" }, "bar"),
   React.createElement("hr"),
 );
 
+const container = document.getElementById("root");
 React.render(element, container);
