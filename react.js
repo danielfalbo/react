@@ -18,6 +18,10 @@ const CHILD_KEY = "child";
 const SIBLING_KEY = "sibling";
 const ALTERNATE_KEY = "alternate";
 const EFFECT_TAG_KEY = "effectTag";
+const HOOKS_KEY = "hooks";
+
+const STATE_KEY = "state";
+const QUEUE_KEY = "queue";
 
 /* Effect tag for updated props. */
 const TAG_UPDATE = "UPDATE";
@@ -73,7 +77,40 @@ function performUnitOfWork(fiber) {
   }
 }
 
+function useState(initial) {
+  const alt = wipFiber[ALTERNATE_KEY];
+  const oldHook =
+    alt != null && alt[HOOKS_KEY] != null ? alt[HOOKS_KEY][hookIndex] : null;
+  const hook = {
+    [STATE_KEY]: oldHook != null ? oldHook[STATE_KEY] : initial,
+    [QUEUE_KEY]: [],
+  };
+
+  const actions = oldHook ? oldHook[QUEUE_KEY] : [];
+  actions.forEach((action) => {
+    hook[STATE_KEY] = action(hook[STATE_KEY]);
+  });
+
+  const setState = (action) => {
+    hook[QUEUE_KEY].push(action);
+    wipRoot = {
+      [DOM_KEY]: currentRoot[DOM_KEY],
+      [PROPS_KEY]: currentRoot[PROPS_KEY],
+      [ALTERNATE_KEY]: currentRoot,
+    };
+    nextUnitOfWork = wipRoot;
+    wipDeletions = [];
+  };
+
+  wipFiber[HOOKS_KEY].push(hook);
+  hookIndex++;
+  return [hook.state, setState];
+}
+
 function updateFunctionalComponent(fiber) {
+  wipFiber = fiber;
+  hookIndex = 0;
+  wipFiber[HOOKS_KEY] = [];
   const children = [fiber[TYPE_KEY](fiber[PROPS_KEY])];
   reconcileChildren(fiber, children);
 }
@@ -99,7 +136,7 @@ function reconcileChildren(fiber, elements) {
     const sameType =
       oldFiber != null &&
       element != null &&
-      element[TYPE_KEY] == oldFiber[TYPE_KEY];
+      element[TYPE_KEY] === oldFiber[TYPE_KEY];
 
     if (sameType) {
       /* Same type, so just update props. */
@@ -129,6 +166,10 @@ function reconcileChildren(fiber, elements) {
         oldFiber[EFFECT_TAG_KEY] = TAG_DELETION;
         wipDeletions.push(oldFiber);
       }
+    }
+
+    if (oldFiber != null) {
+      oldFiber = oldFiber[SIBLING_KEY];
     }
 
     if (i === 0) {
@@ -275,11 +316,7 @@ function createDom(fiber) {
       ? document.createTextNode("")
       : document.createElement(fiber[TYPE_KEY]);
 
-  Object.keys(fiber[PROPS_KEY])
-    .filter(isProperty)
-    .forEach((key) => {
-      dom[key] = fiber[PROPS_KEY][key];
-    });
+  updateDom(dom, {}, fiber[PROPS_KEY]);
 
   return dom;
 }
@@ -300,7 +337,7 @@ function updateDom(dom, prevProps, nextProps) {
   /* Remove old or changed event listeners. */
   Object.keys(prevProps)
     .filter(isEvent)
-    .filter((key) => isGone(nextProps)(key) || isNew(prevProps, nextProps))
+    .filter((key) => isGone(nextProps)(key) || isNew(prevProps, nextProps)(key))
     .forEach((key) => {
       const eventType = getEventType(key);
       dom.removeEventListener(eventType, prevProps[key]);
@@ -392,7 +429,7 @@ function render(element, container) {
 const React = {
   createElement,
   render,
-  // useState,
+  useState,
 };
 
 /* ================== React app ======================= */
@@ -400,14 +437,21 @@ const React = {
 /* Global pointer to the fiber root of the DOM currently rendered. */
 let currentRoot = null;
 
+/* Global pointer to the next unit of work as fiber node. */
+let nextUnitOfWork = null;
+
 /* Work in progress root as fiber node.
  * To perform work in units but only mutate DOM
  * when work is entirely done. */
 let wipRoot = null;
+
 /* Work in progress elements to delete. */
 let wipDeletions = [];
-/* Global pointer to the next unit of work as fiber node. */
-let nextUnitOfWork = null;
+
+/* */
+let wipFiber = null;
+/* */
+let hookIndex = null;
 
 /* "Install" the work loop inside the event loop. */
 requestIdleCallback(workLoop);
@@ -416,12 +460,22 @@ function Hello(props) {
   return React.createElement("h1", null, "Hi, ", props.name);
 }
 
+function Counter() {
+  const [state, setState] = React.useState(1);
+  return React.createElement(
+    "h1",
+    { onClick: () => setState((c) => c + 1) },
+    `Count: ${state}`,
+  );
+}
+
 const element = React.createElement(
   "div",
   { id: "foo" },
   React.createElement(Hello, { name: "foo" }),
   React.createElement("a", { href: "https://danielfalbo.com" }, "bar"),
   React.createElement("hr"),
+  React.createElement(Counter),
 );
 
 const container = document.getElementById("root");
