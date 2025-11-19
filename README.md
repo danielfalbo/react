@@ -18,4 +18,5 @@ https://chatgpt.com/c/691dd317-f698-832b-8a65-d09d8f42f02f
 https://gemini.google.com/app/e920fca6e423eae9
 - use `switch`
 - optimize leveraging V8 hidden classes inference
+https://youtu.be/Y61kwgYvMdg
 
