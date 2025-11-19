@@ -72,6 +72,11 @@ function workLoop(deadline) {
     // https://developer.mozilla.org/docs/Web/API/IdleDeadline
     shouldYield = deadline.timeRemaining() < 1;
   }
+
+  if (nextUnitOfWork == null && wipRoot != null) {
+    commit();
+  }
+
   // https://developer.mozilla.org/docs/Web/API/Window/requestIdleCallback
   requestIdleCallback(workLoop);
 }
@@ -200,12 +205,30 @@ function createDom(fiber) {
   return dom;
 }
 
+/* Commit the WIP root. */
+function commit() {
+  commitNode(wipRoot[FIBER_NODE_CHILD_KEY]);
+  wipRoot = null;
+}
+
+/* Commit the given fiber node,
+ * rendering the 'child' onto the 'dom'. */
+function commitNode(fiber) {
+  if (fiber == null) {
+    return;
+  }
+  const domParent = fiber[FIBER_NODE_PARENT_KEY][FIBER_NODE_DOM_KEY];
+  domParent.appendChild(fiber[FIBER_NODE_DOM_KEY]);
+  commitNode(fiber[FIBER_NODE_CHILD_KEY]);
+  commitNode(fiber[FIBER_NODE_SIBLING_KEY]);
+}
+
 /* Set next unit of work to be the rendering of the given
  * 'element' onto the given 'container'. */
 function render(element, container) {
-  nextUnitOfWork = {
+  nextUnitOfWork = wipRoot = {
     [FIBER_NODE_DOM_KEY]: container,
-    [REACT_ELEMENT_PROPS_KEY]: { children: [element] },
+    [REACT_ELEMENT_PROPS_KEY]: { [REACT_CHILDREN_PROP_KEY]: [element] },
   };
 }
 
@@ -218,6 +241,10 @@ const React = {
 
 /* ================== React app ======================= */
 
+/* Work in progress root as fiber node.
+ * To perform work in units but only mutate DOM
+ * when work is entirely done. */
+let wipRoot = null;
 /* Global pointer to the next unit of work as fiber node. */
 let nextUnitOfWork = null;
 
