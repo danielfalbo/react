@@ -1,6 +1,6 @@
 /* ================= JavaScript utils ================= */
 
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/typeof
+// https://developer.mozilla.org/docs/Web/JavaScript/Reference/Operators/typeof
 const JS_OBJECT_TYPE_NAME = "object";
 
 function isJsObject(x) {
@@ -24,7 +24,7 @@ const REACT_ELEMENT_PROPS_KEY = "props";
 /* Key of type within React element object. */
 const REACT_ELEMENT_TYPE_KEY = "type";
 
-// https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeValue
+// https://developer.mozilla.org/docs/Web/API/Node/nodeValue
 const TEXT_ELEMENT_VALUE_PROP_KEY = "nodeValue";
 
 const REACT_TEXT_ELEMENT_TYPE_NAME = "TEXT_ELEMENT";
@@ -45,7 +45,7 @@ function createTextElement(text) {
  *
  * For example
  *
- * React.createElement(
+ * createElement(
  *   "div",
  *   { id: "foo" },
  *   React.createElement("h1", { title: "foo" }, "Hello"),
@@ -69,6 +69,7 @@ function createTextElement(text) {
  *            ]
  *          }
  *        },
+ *
  *        {
  *          type: "a",
  *          props: {
@@ -78,6 +79,7 @@ function createTextElement(text) {
  *            ]
  *          }
  *        },
+ *
  *        { type: "b" },
  *      ]
  *    }
@@ -89,9 +91,11 @@ function createTextElement(text) {
  *   <h1 title="foo">
  *     Hello
  *   </h1>
+ *
  *   <a href="https://danielfalbo.com">
  *     bar
  *   </a>
+ *
  *   <b />
  * </div>
  */
@@ -104,7 +108,7 @@ function createElement(type, props, ...children) {
 
       /* Children are just the value of the REACT_CHILDREN_PROP_KEY prop. */
       [REACT_CHILDREN_PROP_KEY]: children.map((child) =>
-        isJsObject(child) ? child : createTextElement(child)
+        isJsObject(child) ? child : createTextElement(child),
       ),
     },
   };
@@ -149,7 +153,7 @@ const element = React.createElement(
   { id: "foo" },
   React.createElement("h1", { title: "foo" }, "Hello"),
   React.createElement("a", { href: "https://danielfalbo.com" }, "bar"),
-  React.createElement("hr")
+  React.createElement("hr"),
 );
 
 React.render(element, container);
