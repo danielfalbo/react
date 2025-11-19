@@ -1,4 +1,4 @@
-/* ================= Utils ============================ */
+/* ====================== Utils ======================= */
 
 // https://developer.mozilla.org/docs/Web/JavaScript/Reference/Operators/typeof
 function isJsObject(x) {
@@ -8,12 +8,59 @@ function isJsObject(x) {
 /* ============= Cooperative concurrency ==============
  * https://developer.mozilla.org/docs/Web/API/Background_Tasks_API */
 
-/* Global pointer to the next unit of work. */
-let nextUnitOfWork = null;
+FIBER_NODE_DOM_KEY = "dom";
+FIBER_NODE_PARENT_KEY = "parent";
+FIBER_NODE_CHILD_KEY = "child";
+FIBER_NODE_SIBLING_KEY = "sibling";
 
-/* Performs the given 'nextUnitOfWork' and returns
- * the next unit of work. */
-function performUnitOfWork(nextUnitOfWork) {}
+/* Performs the given 'unitOfWork' and returns the next.
+ * Units of work are fiber nodes. Performing a unit of work
+ * means creating a dom object for the given fiber node
+ * and pushing it onto the parent dom object. */
+function performUnitOfWork(unitOfWork) {
+  if (unitOfWork[FIBER_NODE_DOM_KEY] == null) {
+    unitOfWork[FIBER_NODE_DOM_KEY] = createDom(unitOfWork);
+  }
+
+  if (unitOfWork[FIBER_NODE_PARENT_KEY] != null) {
+    unitOfWork[FIBER_NODE_PARENT_KEY][FIBER_NODE_DOM_KEY].appendChild(
+      unitOfWork[FIBER_NODE_DOM_KEY],
+    );
+  }
+
+  const elements = unitOfWork[REACT_ELEMENT_PROPS_KEY][REACT_CHILDREN_PROP_KEY];
+  let prevSibling = null;
+  for (let i = 0; i < elements.length; i++) {
+    const element = elements[i];
+
+    const newFiber = {
+      [REACT_ELEMENT_TYPE_KEY]: element[REACT_ELEMENT_TYPE_KEY],
+      [REACT_ELEMENT_PROPS_KEY]: element[REACT_ELEMENT_PROPS_KEY],
+      [FIBER_NODE_PARENT_KEY]: unitOfWork,
+      [FIBER_NODE_DOM_KEY]: null,
+    };
+
+    if (i === 0) {
+      unitOfWork[FIBER_NODE_CHILD_KEY] = newFiber;
+    } else {
+      prevSibling[FIBER_NODE_SIBLING_KEY] = newFiber;
+    }
+
+    prevSibling = newFiber;
+  }
+
+  if (unitOfWork[FIBER_NODE_CHILD_KEY] != null) {
+    return unitOfWork[FIBER_NODE_CHILD_KEY];
+  }
+
+  let nextFiber = unitOfWork;
+  while (nextFiber != null) {
+    if (nextFiber[FIBER_NODE_SIBLING_KEY] != null) {
+      return nextFiber[FIBER_NODE_SIBLING_KEY];
+    }
+    nextFiber = nextFiber[FIBER_NODE_PARENT_KEY];
+  }
+}
 
 /* Execute work until the given deadline is over,
  * then recursively enqueue itself to perform more work
@@ -28,9 +75,6 @@ function workLoop(deadline) {
   // https://developer.mozilla.org/docs/Web/API/Window/requestIdleCallback
   requestIdleCallback(workLoop);
 }
-
-/* "Install" the work loop inside the event loop. */
-requestIdleCallback(workLoop);
 
 /* ============== React element object ================ */
 
@@ -139,25 +183,30 @@ function createElement(type, props, ...children) {
   };
 }
 
-/* ======== Rendering react element onto DOM ========== */
+/* ==================== Rendering ===================== */
 
-function render(element, container) {
+function createDom(fiber) {
   const dom =
-    element[REACT_ELEMENT_TYPE_KEY] === REACT_TEXT_ELEMENT_TYPE_NAME
+    fiber[REACT_ELEMENT_TYPE_KEY] === REACT_TEXT_ELEMENT_TYPE_NAME
       ? document.createTextNode("")
-      : document.createElement(element[REACT_ELEMENT_TYPE_KEY]);
+      : document.createElement(fiber[REACT_ELEMENT_TYPE_KEY]);
 
-  Object.keys(element[REACT_ELEMENT_PROPS_KEY])
+  Object.keys(fiber[REACT_ELEMENT_PROPS_KEY])
     .filter(isProperty)
     .forEach((key) => {
-      dom[key] = element[REACT_ELEMENT_PROPS_KEY][key];
+      dom[key] = fiber[REACT_ELEMENT_PROPS_KEY][key];
     });
 
-  element.props[REACT_CHILDREN_PROP_KEY].forEach((child) => {
-    render(child, dom);
-  });
+  return dom;
+}
 
-  container.appendChild(dom);
+/* Set next unit of work to be the rendering of the given
+ * 'element' onto the given 'container'. */
+function render(element, container) {
+  nextUnitOfWork = {
+    [FIBER_NODE_DOM_KEY]: container,
+    [REACT_ELEMENT_PROPS_KEY]: { children: [element] },
+  };
 }
 
 /* ================== React module ==================== */
@@ -169,7 +218,11 @@ const React = {
 
 /* ================== React app ======================= */
 
-/* Create and render a React app onto the "root" element. */
+/* Global pointer to the next unit of work as fiber node. */
+let nextUnitOfWork = null;
+
+/* "Install" the work loop inside the event loop. */
+requestIdleCallback(workLoop);
 
 const container = document.getElementById("root");
 
