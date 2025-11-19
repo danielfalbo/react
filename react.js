@@ -28,6 +28,13 @@ const REACT_ELEMENT_TYPE_KEY = "type";
 const TEXT_ELEMENT_VALUE_PROP_KEY = "nodeValue";
 
 const REACT_TEXT_ELEMENT_TYPE_NAME = "TEXT_ELEMENT";
+/* Create React text element object.
+ * Text elements look like
+ * {
+ *    type: "TEXT_ELEMENT",
+ *    props: { nodeValue: "text here", children: [] }
+ * }
+ */
 function createTextElement(text) {
   return createElement(REACT_TEXT_ELEMENT_TYPE_NAME, {
     [TEXT_ELEMENT_VALUE_PROP_KEY]: text,
@@ -46,7 +53,7 @@ function createTextElement(text) {
  *   React.createElement("b")
  * )
  *
- * returns the object
+ * returns an object like
  *
  * {
  *    type: "div",
@@ -71,7 +78,7 @@ function createTextElement(text) {
  *            ]
  *          }
  *        },
- *        { type: "b", props: { children: [] } },
+ *        { type: "b" },
  *      ]
  *    }
  * }
