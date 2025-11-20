@@ -1,6 +1,6 @@
-# React
+# React.js
 
-Toy React implementation
+Toy React.js implementation
 
 ## Skeptical AI prompt for learning
 
