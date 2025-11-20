@@ -1,8 +1,78 @@
-# react
+# React
 
 Toy React implementation
 
-## resources
+## Skeptical AI prompt for learning
+
+Usually prompted to the best thinking LLM available at the given time.
+
+
+```
+<README's Sample Flow explanation section>
+</README's Sample Flow explanation section>
+
+<react.js>
+</react.js>
+
+I'm a senior software engineer at Meta.
+We invented and maintain React.
+We are looking to hire a new senior staff developer to lead the React
+project for the future.
+They made a toy implementation of React as an interviewing step.
+This is their progress so far.
+
+What do you see from their current implementation?
+What are they doing wrong?
+Do you see red flags?
+Do you think they understand what they are doing?
+Do you see any correctness issue?
+Do you see any bug?
+Could the code be more elegant and better commented?
+Could the code be more clear?
+Can the code be refactored to be more beautiful?
+Can the code be refactored to be more simple?
+Can the code be refactored to have better abstractions,
+never repeating blocks of code?
+
+Should we hire them as the new React project lead?
+```
+
+## Sample Flow
+
+1. The `workLoop` is "installed" within the browser's event loop.
+2. `React.render(element, container)` sets as next unit of work
+to rendering of `element` as child of `container`.
+3. One fiber node at a time, the `workLoop` incrementally renders
+the elements as DOM-like objects at the `_wipFiberRoot` buffer.
+4. As we finish rendering the last fiber node, `workLoop` calls `commit`
+which flushes the changes accumulated at `_wipFiberRoot` onto the browser's DOM.
+All nodes will have the `"UPDATE"` `effectTag` and
+`isNew(prevProps, nextProps)(key)` will return `True` for every prop of every
+node, so all the changes will be applied to the `htmlElement`.
+5. You click on the `+1` button.
+6. The callback associated with the button is enqueued
+onto the browser's Tasks Queue.
+7. Eventually the Event Loop executes the enqueued callback, which
+- enqueues the action `(oldState) => oldState + 1` onto the hook's actions queue
+within the `_wipFunctionalFiberNode` hooks actions cache,
+- sets `_wipFiberRoot` and `_nextWipFiberNode` to the `_flushedFiberRoot`, which
+will in practice be a virtual representation of what's already rendered.
+8. At the following `workLoop` call, it finds non-null `_nextWipFiberNode`, so
+proceeds with the work needed to render the given fiber tree onto the
+`_wipFiberRoot` buffer.
+9. Most nodes's props are copied as they are. Except: when it gets to the node
+representing the component containing the hook whose action has been taken, all
+actions found in the hook's queue are executed onto the previous
+`_wipFunctionalFiberNode` state, the result is used as new value for the hook's
+state value.
+10. As we finish rendering the last fiber node, `workLoop` calls `commit`
+which flushes the changes accumulated at `_wipFiberRoot` onto the browser's DOM.
+The `isNew(prevProps, nextProps)(key)` check for the `"UPDATE"`d nodes diff and
+will filter out most nodes, except our `Counter` node, which will have a new
+value for the counter, which will then be applied to its `htmlElement`.
+11. You see the counter value increased by 1 in your browser.
+
+## Resources
 
 1. [Rodrigo Pombo's `didact`](https://pomb.us/build-your-own-react/)
 
@@ -13,11 +83,5 @@ Toy React implementation
 
 ## TODO
 
-- flush onto something that's not the browser's DOM
-- use `switch`
-- optimize leveraging V8 hidden classes inference
-https://youtu.be/Y61kwgYvMdg
-- use js pre-ES6`class`es `new CustomObj(...)` for a bit of "type safety"
-https://chatgpt.com/c/691dd317-f698-832b-8a65-d09d8f42f02f
-https://gemini.google.com/app/e920fca6e423eae9
-
+- `[COOL]` Flush onto something that's not the browser's DOM
+- `[PEDANTIC]` Use more `switch`es

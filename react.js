@@ -400,12 +400,15 @@ function useState(initial) {
 
   const setState = (action) => {
     hook.queue.push(action);
+
     _wipFiberRoot = {
       dom: _flushedFiberRoot.dom,
       props: _flushedFiberRoot.props,
       alt: _flushedFiberRoot,
     };
+
     _nextWipFiberNode = _wipFiberRoot;
+
     _wipDeletions = [];
   };
 
