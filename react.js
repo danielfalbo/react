@@ -421,9 +421,19 @@ function Hello(props) {
 function Counter() {
   const [state, setState] = React.useState(1);
   return React.createElement(
-    "h1",
-    { onClick: () => setState((c) => c + 1) },
-    `Count: ${state}`,
+    "div",
+    { style: "display: flex" },
+    React.createElement(
+      "button",
+      { onClick: () => setState((c) => c - 1) },
+      `-1`,
+    ),
+    React.createElement("h1", { style: "margin: 10px" }, `Count: ${state}`),
+    React.createElement(
+      "button",
+      { onClick: () => setState((c) => c + 1) },
+      `+1`,
+    ),
   );
 }
 
